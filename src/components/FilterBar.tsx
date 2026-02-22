@@ -107,7 +107,7 @@ export default function FilterBar({
         onChange={(e) => onCompanyChange(e.target.value)}
         className="text-sm border border-gray-300 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
       >
-        <option value="">全企業</option>
+        <option value="">全サイト</option>
         {(companies || []).map((company) => (
           <option key={company.name} value={company.name}>
             {company.name}

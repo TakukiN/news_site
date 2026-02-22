@@ -14,7 +14,9 @@ export class YouTubeParser implements SiteParser {
     url: string,
     _config: Record<string, string>
   ): Promise<ArticleMeta[]> {
-    const res = await fetch(url, {
+    const feedUrl = await this.resolveRssFeedUrl(url);
+
+    const res = await fetch(feedUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; CompetitorWatch/1.0)",
       },
@@ -50,9 +52,44 @@ export class YouTubeParser implements SiteParser {
     });
 
     console.log(
-      `[YouTube] Found ${articles.length} videos from RSS feed`
+      `[YouTube] Found ${articles.length} videos from ${feedUrl}`
     );
     return articles;
+  }
+
+  /**
+   * Convert any YouTube channel URL to the RSS feed URL.
+   * Supports: @handle, /channel/ID, /c/name, /user/name, and direct feed URLs.
+   */
+  private async resolveRssFeedUrl(url: string): Promise<string> {
+    // Already a feed URL
+    if (url.includes("/feeds/videos.xml")) return url;
+
+    // /channel/UC... URL — channel ID is directly available
+    const channelMatch = url.match(/\/channel\/(UC[a-zA-Z0-9_-]+)/);
+    if (channelMatch) {
+      return `https://www.youtube.com/feeds/videos.xml?channel_id=${channelMatch[1]}`;
+    }
+
+    // @handle, /c/name, /user/name, or /shorts variant — need to fetch page to get channel_id
+    console.log(`[YouTube] Resolving channel ID from ${url}`);
+    const pageUrl = url.replace(/\/(shorts|videos|streams|playlists)\/?$/, "");
+    const res = await fetch(pageUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+      },
+    });
+    if (!res.ok) throw new Error(`Failed to resolve YouTube channel: ${res.status}`);
+
+    const html = await res.text();
+    const idMatch =
+      html.match(/"externalId":"(UC[a-zA-Z0-9_-]+)"/) ||
+      html.match(/channel_id=(UC[a-zA-Z0-9_-]+)/);
+    if (!idMatch) throw new Error("Could not find YouTube channel ID from page");
+
+    console.log(`[YouTube] Resolved channel ID: ${idMatch[1]}`);
+    return `https://www.youtube.com/feeds/videos.xml?channel_id=${idMatch[1]}`;
   }
 
   async fetchArticleContent(url: string): Promise<FetchContentResult> {

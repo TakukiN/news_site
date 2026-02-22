@@ -18,7 +18,7 @@ interface ProgressContextValue {
   // Crawl
   isCrawling: boolean;
   crawlProgress: CrawlProgress | null;
-  startCrawl: () => Promise<void>;
+  startCrawl: (genreId?: number) => Promise<void>;
   // Resummarize
   isResummarizing: boolean;
   resummarizeProgress: ResummarizeProgress | null;
@@ -67,16 +67,18 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
   const [isResummarizing, setIsResummarizing] = useState(false);
   const [resummarizeProgress, setResummarizeProgress] = useState<ResummarizeProgress | null>(null);
 
-  const startCrawl = useCallback(async () => {
+  const startCrawl = useCallback(async (genreId?: number) => {
     if (isCrawling) return;
     setIsCrawling(true);
     setCrawlProgress({ log: [] });
 
     try {
+      const payload: Record<string, unknown> = { stream: true };
+      if (genreId) payload.genreId = genreId;
       const res = await fetch("/api/crawl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stream: true }),
+        body: JSON.stringify(payload),
       });
 
       await readStream(res, (data) => {

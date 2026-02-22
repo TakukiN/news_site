@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const siteId = searchParams.get("siteId");
+  const genreId = searchParams.get("genreId");
   const companyName = searchParams.get("companyName");
   const category = searchParams.get("category");
   const keyword = searchParams.get("keyword");
@@ -17,7 +18,12 @@ export async function GET(request: NextRequest) {
 
   const where: Record<string, unknown> = {};
   if (siteId) where.siteId = parseInt(siteId);
-  if (companyName) where.site = { name: companyName };
+  if (genreId) {
+    where.site = { ...((where.site as Record<string, unknown>) || {}), genreId: parseInt(genreId) };
+  }
+  if (companyName) {
+    where.site = { ...((where.site as Record<string, unknown>) || {}), name: companyName };
+  }
   if (category) where.category = category;
   if (favoritesOnly) where.isFavorited = true;
   if (keyword) {
@@ -64,6 +70,10 @@ export async function GET(request: NextRequest) {
     if (siteId) {
       conditions.push(`a.site_id = $${paramIdx++}`);
       params.push(parseInt(siteId));
+    }
+    if (genreId) {
+      conditions.push(`s.genre_id = $${paramIdx++}`);
+      params.push(parseInt(genreId));
     }
     if (companyName) {
       conditions.push(`s.name = $${paramIdx++}`);

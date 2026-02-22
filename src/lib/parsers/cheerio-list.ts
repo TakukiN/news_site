@@ -10,6 +10,31 @@ import {
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
+/** Fetch with manual redirect following and cookie persistence to handle sites like source.android.com */
+async function fetchWithRedirects(url: string, headers: Record<string, string>, maxRedirects = 10): Promise<Response> {
+  let currentUrl = url;
+  let cookies = "";
+  for (let i = 0; i < maxRedirects; i++) {
+    const reqHeaders: Record<string, string> = { ...headers };
+    if (cookies) reqHeaders["Cookie"] = cookies;
+    const res = await fetch(currentUrl, { headers: reqHeaders, redirect: "manual" });
+    // Collect Set-Cookie headers
+    const setCookie = res.headers.getSetCookie?.() || [];
+    if (setCookie.length > 0) {
+      const parsed = setCookie.map(c => c.split(";")[0]).join("; ");
+      cookies = cookies ? `${cookies}; ${parsed}` : parsed;
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) throw new Error(`Redirect without location header`);
+      currentUrl = location.startsWith("http") ? location : new URL(location, currentUrl).toString();
+      continue;
+    }
+    return res;
+  }
+  throw new Error(`Too many redirects for ${url}`);
+}
+
 interface CheerioListConfig {
   baseUrl: string;
   headers?: Record<string, string>;
@@ -59,7 +84,7 @@ export class CheerioListParser implements SiteParser {
     const pages = this.buildPageUrls(url, cfg.pagination);
 
     for (const pageUrl of pages) {
-      const res = await fetch(pageUrl, { headers });
+      const res = await fetchWithRedirects(pageUrl, headers);
       if (!res.ok) {
         if (pageUrl === pages[0])
           throw new Error(`cheerio-list fetch failed: ${res.status}`);
@@ -149,9 +174,7 @@ export class CheerioListParser implements SiteParser {
   }
 
   async fetchArticleContent(url: string): Promise<string | FetchContentResult> {
-    const res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT },
-    });
+    const res = await fetchWithRedirects(url, { "User-Agent": USER_AGENT });
     if (!res.ok)
       throw new Error(`cheerio-list article fetch failed: ${res.status}`);
 

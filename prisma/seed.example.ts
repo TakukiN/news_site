@@ -42,6 +42,13 @@ const sites = [
 ];
 
 async function main() {
+  // Create default genre
+  const genre = await prisma.genre.upsert({
+    where: { slug: "default" },
+    update: { name: "ウォッチャー" },
+    create: { name: "ウォッチャー", slug: "default", sortOrder: 0 },
+  });
+
   for (const site of sites) {
     const existing = await prisma.site.findFirst({
       where: { url: site.url },
@@ -49,10 +56,10 @@ async function main() {
     if (existing) {
       await prisma.site.update({
         where: { id: existing.id },
-        data: site,
+        data: { ...site, genreId: genre.id },
       });
     } else {
-      await prisma.site.create({ data: site });
+      await prisma.site.create({ data: { ...site, genreId: genre.id } });
     }
   }
   console.log(`Seeded ${sites.length} sites`);

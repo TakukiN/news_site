@@ -14,9 +14,11 @@ import {
 export class RssParser implements SiteParser {
   async fetchArticleList(
     url: string,
-    _config: Record<string, string>
+    config: Record<string, string>
   ): Promise<ArticleMeta[]> {
-    const res = await fetch(url, {
+    // Use rssUrl from config if available (e.g., when site URL differs from feed URL)
+    const feedUrl = (config as unknown as { rssUrl?: string }).rssUrl || url;
+    const res = await fetch(feedUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; CompetitorWatch/1.0)",
       },
@@ -79,7 +81,7 @@ export class RssParser implements SiteParser {
       });
     }
 
-    console.log(`[RSS] Found ${articles.length} items from ${url}`);
+    console.log(`[RSS] Found ${articles.length} items from ${feedUrl}`);
     return articles;
   }
 

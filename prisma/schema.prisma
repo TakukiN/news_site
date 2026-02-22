@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Genre {
+  id        Int      @id @default(autoincrement())
+  name      String
+  slug      String   @unique
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sites Site[]
+
+  @@map("genres")
+}
+
 model Site {
   id           Int        @id @default(autoincrement())
   name         String
@@ -16,9 +29,11 @@ model Site {
   parserConfig String?    @map("parser_config")
   cronInterval String     @default("0 */6 * * *") @map("cron_interval")
   isActive     Boolean    @default(true) @map("is_active")
+  genreId      Int        @map("genre_id")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
+  genre     Genre      @relation(fields: [genreId], references: [id])
   articles  Article[]
   crawlLogs CrawlLog[]
 

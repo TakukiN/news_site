@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "競合ニュースウォッチャー",
-  description: "競合サイトの記事を自動巡回・要約するダッシュボード",
+  title: "ニュースウォッチャー",
+  description: "ニュースサイトの記事を自動巡回・要約するダッシュボード",
 };
 
 export default function RootLayout({

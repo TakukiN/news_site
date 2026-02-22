@@ -6,6 +6,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const siteId = body?.siteId;
   const stream = body?.stream;
+  const genreId = body?.genreId;
 
   if (siteId && !stream) {
     const site = await prisma.site.findUnique({ where: { id: parseInt(siteId) } });
@@ -22,9 +23,14 @@ export async function POST(request: NextRequest) {
   }
 
   // Streaming mode: send progress updates via SSE
-  const sites = siteId
-    ? await prisma.site.findMany({ where: { id: parseInt(siteId) } })
-    : await prisma.site.findMany({ where: { isActive: true } });
+  const siteWhere: Record<string, unknown> = { isActive: true };
+  if (siteId) {
+    siteWhere.id = parseInt(siteId);
+  }
+  if (genreId) {
+    siteWhere.genreId = parseInt(genreId);
+  }
+  const sites = await prisma.site.findMany({ where: siteWhere });
 
   const encoder = new TextEncoder();
   const readable = new ReadableStream({

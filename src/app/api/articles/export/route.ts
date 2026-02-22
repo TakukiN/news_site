@@ -6,9 +6,15 @@ export async function GET(request: NextRequest) {
   const companyName = searchParams.get("companyName");
   const category = searchParams.get("category");
   const keyword = searchParams.get("keyword");
+  const genreId = searchParams.get("genreId");
 
   const where: Record<string, unknown> = {};
-  if (companyName) where.site = { name: companyName };
+  if (genreId) {
+    where.site = { ...((where.site as Record<string, unknown>) || {}), genreId: parseInt(genreId) };
+  }
+  if (companyName) {
+    where.site = { ...((where.site as Record<string, unknown>) || {}), name: companyName };
+  }
   if (category) where.category = category;
   if (keyword) {
     where.OR = [
@@ -25,7 +31,7 @@ export async function GET(request: NextRequest) {
   });
 
   // Build CSV
-  const headers = ["企業名", "カテゴリ", "タイトル", "URL", "公開日", "検出日", "要約"];
+  const headers = ["表示名", "カテゴリ", "タイトル", "URL", "公開日", "検出日", "要約"];
   const rows = articles.map((a) => {
     const summary = (a.summaryJa || "")
       .replace(/タイトル[：:][^\n]+\n?/, "")

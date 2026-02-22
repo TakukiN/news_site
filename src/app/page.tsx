@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import ArticleCard from "@/components/ArticleCard";
 import FilterBar from "@/components/FilterBar";
@@ -30,6 +31,13 @@ interface CompanyOption {
   color: string;
 }
 
+interface Genre {
+  id: number;
+  name: string;
+  slug: string;
+  _count: { sites: number };
+}
+
 function SkeletonCard() {
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm animate-pulse">
@@ -48,43 +56,99 @@ function SkeletonCard() {
   );
 }
 
-function loadFilter(key: string, fallback: string): string {
+function loadFilter(slug: string, key: string, fallback: string): string {
   if (typeof window === "undefined") return fallback;
   try {
-    return localStorage.getItem(`filter_${key}`) ?? fallback;
+    return localStorage.getItem(`filter_${slug}_${key}`) ?? fallback;
   } catch {
     return fallback;
   }
 }
 
-function saveFilter(key: string, value: string) {
+function saveFilter(slug: string, key: string, value: string) {
   try {
-    localStorage.setItem(`filter_${key}`, value);
+    localStorage.setItem(`filter_${slug}_${key}`, value);
   } catch { /* ignore */ }
 }
 
 export default function Dashboard() {
+  return (
+    <Suspense>
+      <DashboardInner />
+    </Suspense>
+  );
+}
+
+function DashboardInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const [genres, setGenres] = useState<Genre[]>([]);
+  const [activeGenreSlug, setActiveGenreSlug] = useState<string>("");
   const [articles, setArticles] = useState<Article[]>([]);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState(() => loadFilter("company", ""));
-  const [selectedCategory, setSelectedCategory] = useState(() => loadFilter("category", ""));
-  const [keyword, setKeyword] = useState(() => loadFilter("keyword", ""));
-  const [sortBy, setSortBy] = useState(() => loadFilter("sortBy", "publishedAt"));
-  const [sortOrder, setSortOrder] = useState(() => loadFilter("sortOrder", "desc"));
-  const [favoritesOnly, setFavoritesOnly] = useState(() => loadFilter("favoritesOnly", "false") === "true");
+  const [selectedCompany, setSelectedCompany] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [sortBy, setSortBy] = useState("publishedAt");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [filtersInitialized, setFiltersInitialized] = useState(false);
 
   const { isCrawling, crawlProgress, startCrawl } = useProgress();
 
+  const activeGenre = genres.find((g) => g.slug === activeGenreSlug);
+
+  const fetchGenres = useCallback(async () => {
+    const res = await fetch("/api/genres");
+    const data: Genre[] = await res.json();
+    setGenres(data);
+    return data;
+  }, []);
+
+  // Fetch genres on mount
+  useEffect(() => {
+    (async () => {
+      const data = await fetchGenres();
+      const urlGenre = searchParams.get("genre");
+      const slug = urlGenre && data.find((g) => g.slug === urlGenre)
+        ? urlGenre
+        : data[0]?.slug || "";
+      setActiveGenreSlug(slug);
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load filters when genre changes
+  useEffect(() => {
+    if (!activeGenreSlug) return;
+    setSelectedCompany(loadFilter(activeGenreSlug, "company", ""));
+    setSelectedCategory(loadFilter(activeGenreSlug, "category", ""));
+    setKeyword(loadFilter(activeGenreSlug, "keyword", ""));
+    setSortBy(loadFilter(activeGenreSlug, "sortBy", "publishedAt"));
+    setSortOrder(loadFilter(activeGenreSlug, "sortOrder", "desc"));
+    setFavoritesOnly(loadFilter(activeGenreSlug, "favoritesOnly", "false") === "true");
+    setPage(1);
+    setFiltersInitialized(true);
+  }, [activeGenreSlug]);
+
+  const handleGenreChange = useCallback((slug: string) => {
+    setFiltersInitialized(false);
+    setActiveGenreSlug(slug);
+    router.push(`/?genre=${slug}`, { scroll: false });
+  }, [router]);
+
   const fetchArticles = useCallback(async () => {
+    if (!activeGenre || !filtersInitialized) return;
     setError(null);
     try {
       const params = new URLSearchParams();
+      params.set("genreId", activeGenre.id.toString());
       if (selectedCompany) params.set("companyName", selectedCompany);
       if (selectedCategory) params.set("category", selectedCategory);
       if (keyword) params.set("keyword", keyword);
@@ -105,10 +169,11 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCompany, selectedCategory, keyword, page, sortBy, sortOrder, favoritesOnly]);
+  }, [activeGenre, filtersInitialized, selectedCompany, selectedCategory, keyword, page, sortBy, sortOrder, favoritesOnly]);
 
   const fetchSites = useCallback(async () => {
-    const res = await fetch("/api/sites");
+    if (!activeGenre) return;
+    const res = await fetch(`/api/sites?genreId=${activeGenre.id}`);
     const data = await res.json();
     const companyMap = new Map<string, string>();
     for (const s of data) {
@@ -119,7 +184,7 @@ export default function Dashboard() {
     setCompanies(
       Array.from(companyMap.entries()).map(([name, color]) => ({ name, color }))
     );
-  }, []);
+  }, [activeGenre]);
 
   useEffect(() => {
     fetchSites();
@@ -130,14 +195,15 @@ export default function Dashboard() {
   }, [fetchArticles]);
 
   useEffect(() => {
+    if (!activeGenreSlug || !filtersInitialized) return;
     setPage(1);
-    saveFilter("company", selectedCompany);
-    saveFilter("category", selectedCategory);
-    saveFilter("keyword", keyword);
-    saveFilter("sortBy", sortBy);
-    saveFilter("sortOrder", sortOrder);
-    saveFilter("favoritesOnly", String(favoritesOnly));
-  }, [keyword, selectedCompany, selectedCategory, sortBy, sortOrder, favoritesOnly]);
+    saveFilter(activeGenreSlug, "company", selectedCompany);
+    saveFilter(activeGenreSlug, "category", selectedCategory);
+    saveFilter(activeGenreSlug, "keyword", keyword);
+    saveFilter(activeGenreSlug, "sortBy", sortBy);
+    saveFilter(activeGenreSlug, "sortOrder", sortOrder);
+    saveFilter(activeGenreSlug, "favoritesOnly", String(favoritesOnly));
+  }, [keyword, selectedCompany, selectedCategory, sortBy, sortOrder, favoritesOnly, activeGenreSlug, filtersInitialized]);
 
   // Refresh articles when crawl finishes
   useEffect(() => {
@@ -147,11 +213,10 @@ export default function Dashboard() {
   }, [isCrawling, crawlProgress, fetchArticles]);
 
   const handleCrawl = async () => {
-    await startCrawl();
+    await startCrawl(activeGenre?.id);
   };
 
   const handleMarkRead = async (articleId: number) => {
-    // Track view
     fetch("/api/articles/view", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -201,9 +266,11 @@ export default function Dashboard() {
   };
 
   const handleExportCSV = async () => {
+    if (!activeGenre) return;
     setExporting(true);
     try {
       const params = new URLSearchParams();
+      params.set("genreId", activeGenre.id.toString());
       if (selectedCompany) params.set("companyName", selectedCompany);
       if (selectedCategory) params.set("category", selectedCategory);
       if (keyword) params.set("keyword", keyword);
@@ -226,7 +293,13 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
-      <Header onCrawl={handleCrawl} isCrawling={isCrawling} />
+      <Header
+        onCrawl={handleCrawl}
+        isCrawling={isCrawling}
+        genres={genres}
+        activeGenreSlug={activeGenreSlug}
+        onGenreChange={handleGenreChange}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Crawl progress bar */}
