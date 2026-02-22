@@ -20,7 +20,7 @@ export class RssParser implements SiteParser {
     const feedUrl = (config as unknown as { rssUrl?: string }).rssUrl || url;
     const res = await fetch(feedUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; CompetitorWatch/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; NewsWatcher/1.0)",
       },
     });
     if (!res.ok) throw new Error(`RSS fetch failed: ${res.status}`);
@@ -96,7 +96,7 @@ export class RssParser implements SiteParser {
 
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; CompetitorWatch/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; NewsWatcher/1.0)",
       },
     });
     if (!res.ok)

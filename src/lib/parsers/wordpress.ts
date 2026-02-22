@@ -8,7 +8,7 @@ import {
 } from "./base";
 
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; CompetitorWatch/1.0)";
+  "Mozilla/5.0 (compatible; NewsWatcher/1.0)";
 
 interface WordPressConfig {
   apiUrl: string;
