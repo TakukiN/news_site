@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +40,36 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prisma generated client
+/src/generated/prisma
+
+# database files
+/prisma/dev.db
+/prisma/*.db
+*.sqlite
+*.sqlite3
+
+# scripts output
+/scripts/*.log
+/scripts/migrate-parser-types.ts
+
+# parsers — ignore all, then whitelist generic/public ones
+/src/lib/parsers/*
+!/src/lib/parsers/base.ts
+!/src/lib/parsers/index.ts
+!/src/lib/parsers/example.ts
+!/src/lib/parsers/rss.ts
+!/src/lib/parsers/youtube.ts
+!/src/lib/parsers/cheerio-list.ts
+!/src/lib/parsers/api-json.ts
+!/src/lib/parsers/wordpress.ts
+!/src/lib/parsers/playwright-list.ts
+
+# seed data (contains monitored site list)
+/prisma/seed.ts
+!/prisma/seed.example.ts
+
+# project management docs (contain company references)
+/docs/
+/pmo/

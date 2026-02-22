@@ -1,64 +1,357 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useCallback, useEffect, useState } from "react";
+import Header from "@/components/Header";
+import ArticleCard from "@/components/ArticleCard";
+import FilterBar from "@/components/FilterBar";
+import { useProgress } from "@/components/ProgressContext";
+
+interface Article {
+  id: number;
+  title: string;
+  externalUrl: string;
+  summaryJa: string | null;
+  detailSummaryJa: string | null;
+  rawContent: string | null;
+  imageUrl: string | null;
+  publishedAt: string | null;
+  detectedAt: string;
+  isNew: boolean;
+  category: string;
+  viewCount?: number;
+  isFavorited?: boolean;
+  likeCount?: number;
+  commentCount?: number;
+  site: { name: string; color: string };
+}
+
+interface CompanyOption {
+  name: string;
+  color: string;
+}
+
+function SkeletonCard() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm animate-pulse">
+      <div className="aspect-[16/9] bg-gray-200" />
+      <div className="p-4 space-y-3">
+        <div className="h-3 bg-gray-200 rounded w-1/4" />
+        <div className="h-4 bg-gray-200 rounded w-3/4" />
+        <div className="space-y-2">
+          <div className="h-3 bg-gray-200 rounded w-full" />
+          <div className="h-3 bg-gray-200 rounded w-5/6" />
+          <div className="h-3 bg-gray-200 rounded w-2/3" />
+        </div>
+        <div className="h-3 bg-gray-200 rounded w-1/4 pt-2" />
+      </div>
+    </div>
+  );
+}
+
+function loadFilter(key: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  try {
+    return localStorage.getItem(`filter_${key}`) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveFilter(key: string, value: string) {
+  try {
+    localStorage.setItem(`filter_${key}`, value);
+  } catch { /* ignore */ }
+}
+
+export default function Dashboard() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState(() => loadFilter("company", ""));
+  const [selectedCategory, setSelectedCategory] = useState(() => loadFilter("category", ""));
+  const [keyword, setKeyword] = useState(() => loadFilter("keyword", ""));
+  const [sortBy, setSortBy] = useState(() => loadFilter("sortBy", "publishedAt"));
+  const [sortOrder, setSortOrder] = useState(() => loadFilter("sortOrder", "desc"));
+  const [favoritesOnly, setFavoritesOnly] = useState(() => loadFilter("favoritesOnly", "false") === "true");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const { isCrawling, crawlProgress, startCrawl } = useProgress();
+
+  const fetchArticles = useCallback(async () => {
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (selectedCompany) params.set("companyName", selectedCompany);
+      if (selectedCategory) params.set("category", selectedCategory);
+      if (keyword) params.set("keyword", keyword);
+      params.set("page", page.toString());
+      params.set("limit", "20");
+      params.set("sortBy", sortBy);
+      params.set("sortOrder", sortOrder);
+      if (favoritesOnly) params.set("favoritesOnly", "true");
+
+      const res = await fetch(`/api/articles?${params}`);
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+      setArticles(data.articles);
+      setTotalPages(data.pagination.totalPages);
+      setTotal(data.pagination.total);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "記事の取得に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCompany, selectedCategory, keyword, page, sortBy, sortOrder, favoritesOnly]);
+
+  const fetchSites = useCallback(async () => {
+    const res = await fetch("/api/sites");
+    const data = await res.json();
+    const companyMap = new Map<string, string>();
+    for (const s of data) {
+      if (!companyMap.has(s.name)) {
+        companyMap.set(s.name, s.color);
+      }
+    }
+    setCompanies(
+      Array.from(companyMap.entries()).map(([name, color]) => ({ name, color }))
+    );
+  }, []);
+
+  useEffect(() => {
+    fetchSites();
+  }, [fetchSites]);
+
+  useEffect(() => {
+    fetchArticles();
+  }, [fetchArticles]);
+
+  useEffect(() => {
+    setPage(1);
+    saveFilter("company", selectedCompany);
+    saveFilter("category", selectedCategory);
+    saveFilter("keyword", keyword);
+    saveFilter("sortBy", sortBy);
+    saveFilter("sortOrder", sortOrder);
+    saveFilter("favoritesOnly", String(favoritesOnly));
+  }, [keyword, selectedCompany, selectedCategory, sortBy, sortOrder, favoritesOnly]);
+
+  // Refresh articles when crawl finishes
+  useEffect(() => {
+    if (!isCrawling && crawlProgress) {
+      fetchArticles();
+    }
+  }, [isCrawling, crawlProgress, fetchArticles]);
+
+  const handleCrawl = async () => {
+    await startCrawl();
+  };
+
+  const handleMarkRead = async (articleId: number) => {
+    // Track view
+    fetch("/api/articles/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ articleId }),
+    }).catch(() => {});
+
+    await fetch("/api/articles", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ articleIds: [articleId], isNew: false }),
+    });
+    setArticles((prev) =>
+      prev.map((a) => (a.id === articleId ? { ...a, isNew: false } : a))
+    );
+  };
+
+  const handleFavorite = async (articleId: number) => {
+    try {
+      const res = await fetch("/api/articles/favorite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setArticles((prev) =>
+          prev.map((a) => (a.id === articleId ? { ...a, isFavorited: data.isFavorited } : a))
+        );
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleLike = async (articleId: number) => {
+    try {
+      const res = await fetch("/api/articles/like", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setArticles((prev) =>
+          prev.map((a) => (a.id === articleId ? { ...a, likeCount: data.likeCount } : a))
+        );
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedCompany) params.set("companyName", selectedCompany);
+      if (selectedCategory) params.set("category", selectedCategory);
+      if (keyword) params.set("keyword", keyword);
+      params.set("format", "csv");
+
+      const res = await fetch(`/api/articles/export?${params}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `articles_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const newCount = articles.filter((a) => a.isNew).length;
+
+  return (
+    <div className="min-h-screen">
+      <Header onCrawl={handleCrawl} isCrawling={isCrawling} />
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Crawl progress bar */}
+        {crawlProgress && (
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+            <div className="flex items-center gap-3 mb-2">
+              {isCrawling && (
+                <svg className="animate-spin h-4 w-4 text-indigo-600" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              )}
+              <p className="text-sm font-medium text-indigo-800">
+                {isCrawling
+                  ? `巡回中... ${crawlProgress.current || 0}/${crawlProgress.total || 0} サイト — ${crawlProgress.siteName || ""}`
+                  : "巡回完了"}
+              </p>
+            </div>
+            <div className="max-h-32 overflow-y-auto space-y-0.5">
+              {crawlProgress.log.map((msg, i) => (
+                <p key={i} className="text-xs text-indigo-600">{msg}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <FilterBar
+          companies={companies}
+          selectedCompany={selectedCompany}
+          selectedCategory={selectedCategory}
+          keyword={keyword}
+          sortBy={sortBy}
+          sortOrder={sortOrder}
+          favoritesOnly={favoritesOnly}
+          onCompanyChange={setSelectedCompany}
+          onCategoryChange={setSelectedCategory}
+          onKeywordChange={setKeyword}
+          onSortByChange={setSortBy}
+          onSortOrderChange={setSortOrder}
+          onFavoritesOnlyChange={setFavoritesOnly}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+
+        {/* Error display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+            <p className="text-sm text-red-700">記事の読み込みに失敗しました: {error}</p>
+            <button
+              onClick={fetchArticles}
+              className="mt-1 text-xs font-medium text-red-600 hover:text-red-800"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+              再試行
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-600">
+            {total > 0 ? (
+              <>
+                全 <span className="font-semibold">{total}</span> 件
+                {newCount > 0 && (
+                  <span className="ml-2 text-amber-600 font-medium">
+                    (新着 {newCount}件)
+                  </span>
+                )}
+              </>
+            ) : loading ? (
+              "読み込み中..."
+            ) : (
+              "記事がありません。「今すぐ巡回」で記事を取得してください。"
+            )}
           </p>
+          {total > 0 && (
+            <button
+              onClick={handleExportCSV}
+              disabled={exporting}
+              className="text-xs font-medium text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              {exporting ? "エクスポート中..." : "CSV出力"}
+            </button>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+
+        {/* Skeleton loading */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {articles.map((article) => (
+              <ArticleCard
+                key={article.id}
+                article={article}
+                onMarkRead={handleMarkRead}
+                onFavorite={handleFavorite}
+                onLike={handleLike}
+              />
+            ))}
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-4">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              前へ
+            </button>
+            <span className="text-sm text-gray-600">
+              {page} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              次へ
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );
