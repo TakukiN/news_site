@@ -101,9 +101,12 @@ function DashboardInner() {
   const [exporting, setExporting] = useState(false);
   const [filtersInitialized, setFiltersInitialized] = useState(false);
 
-  const { isCrawling, crawlProgress, startCrawl } = useProgress();
+  const { isCrawling, crawlingGenreId, crawlProgress, crawlQueue, startCrawl } = useProgress();
 
   const activeGenre = genres.find((g) => g.slug === activeGenreSlug);
+  const isCrawlingThisGenre = isCrawling && crawlingGenreId === activeGenre?.id;
+  const isQueuedThisGenre = activeGenre ? crawlQueue.includes(activeGenre.id) : false;
+  const showCrawlProgress = crawlProgress && crawlingGenreId === activeGenre?.id;
 
   const fetchGenres = useCallback(async () => {
     const res = await fetch("/api/genres");
@@ -205,12 +208,12 @@ function DashboardInner() {
     saveFilter(activeGenreSlug, "favoritesOnly", String(favoritesOnly));
   }, [keyword, selectedCompany, selectedCategory, sortBy, sortOrder, favoritesOnly, activeGenreSlug, filtersInitialized]);
 
-  // Refresh articles when crawl finishes
+  // Refresh articles when crawl finishes for this genre
   useEffect(() => {
-    if (!isCrawling && crawlProgress) {
+    if (!isCrawling && crawlingGenreId === activeGenre?.id && crawlProgress) {
       fetchArticles();
     }
-  }, [isCrawling, crawlProgress, fetchArticles]);
+  }, [isCrawling, crawlingGenreId, activeGenre?.id, crawlProgress, fetchArticles]);
 
   const handleCrawl = async () => {
     await startCrawl(activeGenre?.id);
@@ -295,7 +298,8 @@ function DashboardInner() {
     <div className="min-h-screen">
       <Header
         onCrawl={handleCrawl}
-        isCrawling={isCrawling}
+        isCrawling={isCrawlingThisGenre}
+        isQueued={isQueuedThisGenre}
         genres={genres}
         activeGenreSlug={activeGenreSlug}
         onGenreChange={handleGenreChange}
@@ -303,17 +307,17 @@ function DashboardInner() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Crawl progress bar */}
-        {crawlProgress && (
+        {showCrawlProgress && (
           <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
             <div className="flex items-center gap-3 mb-2">
-              {isCrawling && (
+              {isCrawlingThisGenre && (
                 <svg className="animate-spin h-4 w-4 text-indigo-600" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
               )}
               <p className="text-sm font-medium text-indigo-800">
-                {isCrawling
+                {isCrawlingThisGenre
                   ? `巡回中... ${crawlProgress.current || 0}/${crawlProgress.total || 0} サイト — ${crawlProgress.siteName || ""}`
                   : "巡回完了"}
               </p>

@@ -84,9 +84,11 @@ function SettingsPageInner() {
   const [editingSiteId, setEditingSiteId] = useState<number | null>(null);
   const [editingSiteName, setEditingSiteName] = useState("");
 
-  const { isCrawling, startCrawl, isResummarizing, resummarizeProgress, startResummarize } = useProgress();
+  const { isCrawling, crawlingGenreId, crawlQueue, startCrawl, isResummarizing, resummarizeProgress, startResummarize } = useProgress();
 
   const activeGenre = genres.find((g) => g.slug === activeGenreSlug);
+  const isCrawlingThisGenre = isCrawling && crawlingGenreId === activeGenre?.id;
+  const isQueuedThisGenre = activeGenre ? crawlQueue.includes(activeGenre.id) : false;
 
   const fetchGenres = useCallback(async () => {
     const res = await fetch("/api/genres");
@@ -305,7 +307,8 @@ function SettingsPageInner() {
     <div className="min-h-screen">
       <Header
         onCrawl={() => startCrawl(activeGenre?.id)}
-        isCrawling={isCrawling}
+        isCrawling={isCrawlingThisGenre}
+        isQueued={isQueuedThisGenre}
         genres={genres}
         activeGenreSlug={activeGenreSlug}
         onGenreChange={handleGenreChange}

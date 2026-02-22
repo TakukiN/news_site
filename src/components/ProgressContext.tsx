@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useRef, useState } from "react";
 
 interface CrawlProgress {
   siteName?: string;
@@ -17,8 +17,10 @@ interface ResummarizeProgress {
 interface ProgressContextValue {
   // Crawl
   isCrawling: boolean;
+  crawlingGenreId: number | null;
   crawlProgress: CrawlProgress | null;
-  startCrawl: (genreId?: number) => Promise<void>;
+  crawlQueue: number[];
+  startCrawl: (genreId?: number) => void;
   // Resummarize
   isResummarizing: boolean;
   resummarizeProgress: ResummarizeProgress | null;
@@ -63,13 +65,18 @@ async function readStream(res: Response, onEvent: (data: Record<string, unknown>
 
 export function ProgressProvider({ children }: { children: React.ReactNode }) {
   const [isCrawling, setIsCrawling] = useState(false);
+  const [crawlingGenreId, setCrawlingGenreId] = useState<number | null>(null);
   const [crawlProgress, setCrawlProgress] = useState<CrawlProgress | null>(null);
+  const [crawlQueue, setCrawlQueue] = useState<number[]>([]);
   const [isResummarizing, setIsResummarizing] = useState(false);
   const [resummarizeProgress, setResummarizeProgress] = useState<ResummarizeProgress | null>(null);
 
-  const startCrawl = useCallback(async (genreId?: number) => {
-    if (isCrawling) return;
+  const isCrawlingRef = useRef(false);
+
+  const executeCrawl = useCallback(async (genreId?: number) => {
+    isCrawlingRef.current = true;
     setIsCrawling(true);
+    setCrawlingGenreId(genreId ?? null);
     setCrawlProgress({ log: [] });
 
     try {
@@ -109,9 +116,38 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
       console.error("Crawl failed:", e);
     } finally {
       setIsCrawling(false);
-      setTimeout(() => setCrawlProgress(null), 5000);
+      isCrawlingRef.current = false;
+
+      // Show completion for a moment, then process next in queue
+      setTimeout(() => {
+        setCrawlProgress(null);
+        setCrawlingGenreId(null);
+
+        // Process next queued genre
+        setCrawlQueue((prev) => {
+          if (prev.length > 0) {
+            const [next, ...rest] = prev;
+            // Use setTimeout to avoid state update during render
+            setTimeout(() => executeCrawl(next), 100);
+            return rest;
+          }
+          return prev;
+        });
+      }, 3000);
     }
-  }, [isCrawling]);
+  }, []);
+
+  const startCrawl = useCallback((genreId?: number) => {
+    if (!isCrawlingRef.current) {
+      executeCrawl(genreId);
+    } else if (genreId != null) {
+      // Add to queue if not already queued and not currently crawling this genre
+      setCrawlQueue((prev) => {
+        if (prev.includes(genreId)) return prev;
+        return [...prev, genreId];
+      });
+    }
+  }, [executeCrawl]);
 
   const startResummarize = useCallback(async () => {
     if (isResummarizing) return;
@@ -154,7 +190,9 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     <ProgressContext.Provider
       value={{
         isCrawling,
+        crawlingGenreId,
         crawlProgress,
+        crawlQueue,
         startCrawl,
         isResummarizing,
         resummarizeProgress,
