@@ -1,16 +1,16 @@
-# Competitor News Watcher
+# News Watcher
 
-Webダッシュボードで競合企業のニュース・製品情報を自動巡回し、日本語要約付きで一覧表示するツール。
+Webダッシュボードでニュース・製品情報を自動巡回し、日本語要約付きで一覧表示するツール。
 
 ## Features
 
-- 複数サイトのニュース・製品ページを自動クロール
+- ジャンル別に複数サイトのニュース・製品ページを自動クロール
 - ローカルLLM (Ollama) による日本語要約生成
 - 記事のお気に入り・いいね・コメント機能
-- キーワード検索、企業別・カテゴリ別フィルタ
+- キーワード検索、サイト別・カテゴリ別フィルタ
 - 閲覧数・投稿日時・いいね数でソート
 - CSV エクスポート
-- 巡回サイト管理 UI (/settings)
+- ジャンル管理 (/manage) ・巡回サイト管理 (/settings)
 
 ## Tech Stack
 
@@ -89,11 +89,13 @@ OLLAMA_MODEL="qwen3:8b"           # LLM model for summarization
 src/
   app/
     page.tsx              # Dashboard (article list)
-    settings/page.tsx     # Site management
+    settings/page.tsx     # Site management per genre
+    manage/page.tsx       # Genre management
     api/
       articles/           # Article CRUD, favorites, likes, comments
       crawl/              # Crawl trigger endpoint
-      sites/              # Site management API
+      genres/             # Genre CRUD API
+      sites/              # Site management API + auto-detect
   components/
     ArticleCard.tsx       # Article card with summary, actions
     FilterBar.tsx         # Filter/sort controls
